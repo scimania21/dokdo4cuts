@@ -17,6 +17,7 @@
         #frame-selection img { box-sizing: border-box; width: 200px; border: 3px solid transparent; border-radius: 10px; cursor: pointer; transition: border-color .3s, transform .3s; background-color: #fff; }
         #frame-selection img:hover { border-color: #d30026; transform: scale(1.05); }
         #video-container { position: relative; width: 100%; max-width: 500px; margin: 0 auto; }
+        /* 이 부분(scaleX)은 사용자가 거울 모드로 보도록 유지합니다 */
         #capture-screen video { width: 100%; border-radius: 10px; background-color: #000; display: block; transform: scaleX(-1); }
         #countdown-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; justify-content: center; align-items: center; font-size: 150px; font-weight: 700; color: #fff; text-shadow: 2px 2px 8px rgba(0,0,0,.8); -webkit-text-stroke: 2px #000; }
         #capture-controls { margin-top: 15px; }
@@ -273,7 +274,7 @@
             startWebcam(cameraSelect.value);
         });
         
-        // --- (캡처 로직은 기존과 동일) ---
+        // ========== capturePhoto 함수 수정됨 ==========
         function capturePhoto() {
             if (state.capturedPhotos.length >= 10) return;
             shutterSound.currentTime = 0;
@@ -282,9 +283,15 @@
             tempCanvas.width = webcamElement.videoWidth;
             tempCanvas.height = webcamElement.videoHeight;
             const tempCtx = tempCanvas.getContext('2d');
-            tempCtx.translate(tempCanvas.width, 0);
-            tempCtx.scale(-1, 1);
+
+            // --- 삭제됨 ---
+            // tempCtx.translate(tempCanvas.width, 0);
+            // tempCtx.scale(-1, 1);
+            // --------------
+            
+            // 이제 원본 (좌우 반전되지 않은) 이미지를 바로 그립니다.
             tempCtx.drawImage(webcamElement, 0, 0, tempCanvas.width, tempCanvas.height);
+            
             const dataUrl = tempCanvas.toDataURL('image/jpeg');
             state.capturedPhotos.push(dataUrl);
             const img = document.createElement('img');
@@ -298,6 +305,7 @@
                 nextToSelectionBtn.disabled = false; 
             }
         }
+        // ============================================
 
         function runCountdown(seconds, callback) {
             let count = seconds;
