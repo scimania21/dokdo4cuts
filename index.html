@@ -17,8 +17,19 @@
         #frame-selection img { box-sizing: border-box; width: 200px; border: 3px solid transparent; border-radius: 10px; cursor: pointer; transition: border-color .3s, transform .3s; background-color: #fff; }
         #frame-selection img:hover { border-color: #d30026; transform: scale(1.05); }
         #video-container { position: relative; width: 100%; max-width: 500px; margin: 0 auto; }
-        /* 이 부분(scaleX)은 사용자가 거울 모드로 보도록 유지합니다 */
-        #capture-screen video { width: 100%; border-radius: 10px; background-color: #000; display: block; transform: scaleX(-1); }
+        
+        /* ========== CSS 수정됨 ========== */
+        /* transform: scaleX(-1) 속성을 제거합니다. JS가 제어합니다. */
+        #capture-screen video { 
+            width: 100%; 
+            border-radius: 10px; 
+            background-color: #000; 
+            display: block;
+            /* transition을 추가하여 카메라 전환 시 부드럽게 뒤집힙니다 */
+            transition: transform 0.3s;
+        }
+        /* ================================ */
+
         #countdown-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; justify-content: center; align-items: center; font-size: 150px; font-weight: 700; color: #fff; text-shadow: 2px 2px 8px rgba(0,0,0,.8); -webkit-text-stroke: 2px #000; }
         #capture-controls { margin-top: 15px; }
         #stop-capture-btn { background-color: #e74c3c; }
@@ -30,7 +41,6 @@
         #editor-screen canvas { border: 2px solid #ccc; border-radius: 5px; cursor: grab; max-width: 100%; height: auto; touch-action: none; }
         .instructions { background-color: #e6f0ff; border: 1px solid #a0c0ff; color: #003366; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
         .footer { margin-top: 40px; font-size: 14px; color: #888; }
-        /* --- 카메라 선택 UI 스타일 추가 --- */
         #camera-controls { margin-bottom: 10px; }
         #camera-select { padding: 8px; border-radius: 5px; border: 1px solid #ccc; font-size: 14px; }
     </style>
@@ -129,7 +139,6 @@
         const restartBtn = document.getElementById('restart-btn');
         const shutterSound = document.getElementById('shutter-sound');
         
-        // --- 카메라 선택용 DOM 요소 추가 ---
         const cameraSelect = document.getElementById('camera-select');
 
         let state = {
@@ -196,43 +205,50 @@
             document.getElementById(screenId).classList.add('active');
         }
 
-        // --- 수정: 프레임 선택 리스너 변경 ---
         frameSelectionScreen.addEventListener('click', (e) => {
             if (e.target.tagName === 'IMG') {
                 state.selectedFrameSrc = e.target.dataset.frame;
                 state.selectedFrameType = e.target.dataset.photoSlots;
                 state.requiredPhotos = parseInt(e.target.dataset.photos);
-                // startWebcam() 대신 새 함수 호출
                 initializeCameraAndList();
             }
         });
 
-        // --- 신규: 카메라 목록 가져오기 및 초기화 함수 ---
+        // ========== JS `initializeCameraAndList` 함수 수정됨 ==========
         async function initializeCameraAndList() {
             try {
-                // 1. 먼저 권한을 요청하며 기본 스트림을 시작합니다.
                 const initialStream = await navigator.mediaDevices.getUserMedia({ video: true });
                 webcamElement.srcObject = initialStream;
+
+                // --- 추가: 초기 카메라의 facingMode 확인 및 적용 ---
+                const initialTrack = initialStream.getVideoTracks()[0];
+                const initialSettings = initialTrack.getSettings();
+                // 'environment' (후면)가 아니면 모두 거울 모드('user' 또는 undefined)
+                if (initialSettings.facingMode === 'environment') {
+                    webcamElement.style.transform = 'scaleX(1)'; // 후면: 거울 모드 해제
+                } else {
+                    webcamElement.style.transform = 'scaleX(-1)'; // 전면: 거울 모드 적용
+                }
+                // --- ---
+
                 showScreen('capture-screen');
 
-                // 2. 권한을 얻었으므로, 전체 장치 목록을 가져옵니다.
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const videoDevices = devices.filter(device => device.kind === 'videoinput');
                 
-                cameraSelect.innerHTML = ''; // 드롭다운 초기화
+                cameraSelect.innerHTML = ''; 
                 if (videoDevices.length === 0) {
                     alert('사용 가능한 카메라가 없습니다.');
                     return;
                 }
 
-                // 3. 드롭다운 목록을 채웁니다.
                 const currentDeviceInUse = initialStream.getVideoTracks()[0].getSettings().deviceId;
                 videoDevices.forEach((device, index) => {
                     const option = document.createElement('option');
                     option.value = device.deviceId;
                     option.text = device.label || `카메라 ${index + 1}`;
                     if (device.deviceId === currentDeviceInUse) {
-                        option.selected = true; // 현재 사용 중인 카메라를 기본값으로 선택
+                        option.selected = true; 
                     }
                     cameraSelect.appendChild(option);
                 });
@@ -243,25 +259,32 @@
             }
         }
 
-        // --- 수정: startWebcam 함수가 deviceId를 받도록 변경 ---
+        // ========== JS `startWebcam` 함수 수정됨 ==========
         async function startWebcam(deviceId) {
             try {
-                // 1. 기존 스트림이 있으면 중지
                 if (webcamElement.srcObject) {
                     webcamElement.srcObject.getTracks().forEach(track => track.stop());
                 }
 
-                // 2. 새로운 deviceId로 제약 조건 설정
                 const constraints = { 
                     video: { 
                         deviceId: { exact: deviceId } 
                     } 
                 };
 
-                // 3. 새 스트림 시작
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 webcamElement.srcObject = stream;
-                // showScreen('capture-screen'); // 이 함수는 이미 initializeCameraAndList에서 호출됨
+                
+                // --- 추가: 새로 선택된 카메라의 facingMode 확인 및 적용 ---
+                const track = stream.getVideoTracks()[0];
+                const settings = track.getSettings();
+                // 'environment' (후면)가 아니면 모두 거울 모드('user' 또는 undefined)
+                if (settings.facingMode === 'environment') {
+                    webcamElement.style.transform = 'scaleX(1)'; // 후면: 거울 모드 해제
+                } else {
+                    webcamElement.style.transform = 'scaleX(-1)'; // 전면: 거울 모드 적용
+                }
+                // --- ---
 
             } catch (err) {
                 console.error("웹캠 전환 오류:", err);
@@ -269,12 +292,14 @@
             }
         }
 
-        // --- 신규: 카메라 선택 드롭다운 이벤트 리스너 ---
+        // ---
+        
         cameraSelect.addEventListener('change', () => {
             startWebcam(cameraSelect.value);
         });
         
-        // ========== capturePhoto 함수 수정됨 ==========
+        // ========== JS `capturePhoto` 함수는 (이전과 동일하게) 수정 없이 유지 ==========
+        // (거울 모드 반전을 제거한 상태가 원하는 결과이므로)
         function capturePhoto() {
             if (state.capturedPhotos.length >= 10) return;
             shutterSound.currentTime = 0;
@@ -283,13 +308,8 @@
             tempCanvas.width = webcamElement.videoWidth;
             tempCanvas.height = webcamElement.videoHeight;
             const tempCtx = tempCanvas.getContext('2d');
-
-            // --- 삭제됨 ---
-            // tempCtx.translate(tempCanvas.width, 0);
-            // tempCtx.scale(-1, 1);
-            // --------------
             
-            // 이제 원본 (좌우 반전되지 않은) 이미지를 바로 그립니다.
+            // 좌우 반전(거울 모드) 코드가 없는 상태 (정상 캡처)
             tempCtx.drawImage(webcamElement, 0, 0, tempCanvas.width, tempCanvas.height);
             
             const dataUrl = tempCanvas.toDataURL('image/jpeg');
@@ -305,7 +325,7 @@
                 nextToSelectionBtn.disabled = false; 
             }
         }
-        // ============================================
+        // ==========================================================
 
         function runCountdown(seconds, callback) {
             let count = seconds;
@@ -365,12 +385,11 @@
         autoCapture5sBtn.addEventListener('click', () => startAutoCapture(5));
         stopCaptureBtn.addEventListener('click', stopAutoCapture);
 
-        // --- 수정: '사진 선택하기' 버튼 클릭 시 스트림 확실히 중지 ---
         nextToSelectionBtn.addEventListener('click', () => {
             stopAutoCapture();
             if (webcamElement.srcObject) {
                 webcamElement.srcObject.getTracks().forEach(track => track.stop());
-                webcamElement.srcObject = null; // 스트림 참조 제거
+                webcamElement.srcObject = null; 
             }
             setupPhotoSelection();
         });
@@ -440,25 +459,23 @@
                             newWidth = slotHeight * (img.width / img.height);
                         }
 
-                        // ========== 기본 회전값 적용 로직 ==========
                         let defaultRotation = 0;
                         if (state.selectedFrameType === 'frame_01_slots') {
                             switch (i) {
-                                case 0: // 1번 슬롯 (시계 반대 10도)
+                                case 0: 
                                     defaultRotation = -10 * (Math.PI / 180);
                                     break;
-                                case 2: // 3번 슬롯 (시계 5도)
+                                case 2: 
                                     defaultRotation = 5 * (Math.PI / 180);
                                     break;
-                                case 3: // 4번 슬롯 (시계 3도)
+                                case 3: 
                                     defaultRotation = 3 * (Math.PI / 180);
                                     break;
-                                case 5: // 6번 슬롯 (시계 반대 8도)
+                                case 5: 
                                     defaultRotation = -8 * (Math.PI / 180);
                                     break;
                             }
                         }
-                        // =========================================
 
                         return {
                             img: img,
@@ -466,7 +483,7 @@
                             y: slotY + (slotHeight - newHeight) / 2,
                             width: newWidth,
                             height: newHeight,
-                            rotation: defaultRotation, // 0 대신 defaultRotation 변수 사용
+                            rotation: defaultRotation, 
                             originalSlot: { x: slotX, y: slotY, width: slotWidth, height: slotHeight, type: slotType }
                         };
                     });
@@ -518,11 +535,11 @@
             ctx.save();
             ctx.translate(centerX, centerY);
             ctx.rotate(photo.rotation);
-            ctx.strokeStyle = '#0047a0'; // 테마색으로 변경
+            ctx.strokeStyle = '#0047a0'; 
             ctx.lineWidth = 4;
             ctx.strokeRect(-photo.width / 2, -photo.height / 2, photo.width, photo.height);
             
-            ctx.fillStyle = '#0047a0'; // 테마색으로 변경
+            ctx.fillStyle = '#0047a0'; 
             ctx.fillRect(photo.width / 2 - handleSize, photo.height / 2 - handleSize, handleSize * 2, handleSize * 2);
 
             ctx.fillStyle = '#e74c3c';
@@ -694,7 +711,6 @@ document.addEventListener('keydown', e => {
                               now.getMinutes().toString().padStart(2, '0') +
                               now.getSeconds().toString().padStart(2, '0');
             const link = document.createElement('a');
-            // --- 다운로드 파일명 (날짜/시간) ---
             link.download = `${timestamp}.png`; 
             link.href = canvas.toDataURL('image/png');
             document.body.appendChild(link);
@@ -720,12 +736,11 @@ document.addEventListener('keydown', e => {
             printWindow.document.close();
         });
 
-        // --- 수정: '처음으로' 버튼 클릭 시 스트림 확실히 중지 ---
         restartBtn.addEventListener('click', () => {
             stopAutoCapture();
             if (webcamElement.srcObject) {
                 webcamElement.srcObject.getTracks().forEach(track => track.stop());
-                webcamElement.srcObject = null; // 스트림 참조 제거
+                webcamElement.srcObject = null; 
             }
             state = {
                 selectedFrameSrc: null,
